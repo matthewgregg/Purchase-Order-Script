@@ -1,0 +1,211 @@
+<head>
+<title>RS Components</title>
+<HTA:APPLICATION
+APPLICATIONNAME="RS Components"
+SCROLL="auto"
+SINGLEINSTANCE="yes"
+WINDOWSTATE="maximize"
+VERSION="1.0"
+MAXIMIZEBUTTON="no"
+MINIMIZEBUTTON="no"
+ID="objHTA"/>
+<meta http-equiv="x-ua-compatible" content="ie=10">
+</head>
+<script language="VBScript">
+window.resizeTo screen.availWidth*7/16,screen.availHeight/2
+window.moveTo screen.availWidth*(1-7/16)/2,screen.availHeight/4
+
+Function readFromRegistry (strRegistryKey, strDefault)
+    Dim objShell, value
+    On Error Resume Next
+	Set objShell = CreateObject ("WScript.Shell")
+    value = objShell.RegRead (strRegistryKey)
+    If err.number <> 0 Then
+        readFromRegistry= strDefault
+    Else
+        readFromRegistry=value
+    End If
+    Set objShell = nothing
+End Function
+
+Function OpenWithChrome(strURL)
+    Dim strChrome
+    Dim objShell
+    strChrome = readFromRegistry ( "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe\Path", "")
+    If (strChrome = "") Then
+        strChrome = "chrome.exe"
+    Else
+        strChrome = strChrome & "\chrome.exe"
+    End If
+    Set objShell = CreateObject("WScript.Shell")
+    strChrome = """" & strChrome & """" & " " & strURL
+    objShell.Run strChrome, 1, false
+End Function
+
+Function FindRS (findstr)
+	Dim objRegExp, Match, Matches
+	Set objRegExp = New Regexp
+	objRegExp.IgnoreCase = True
+	objRegExp.Global = False
+	objRegExp.Pattern = "\b\d{3}-\d{3,4}\b"
+	Set Matches = objRegExp.Execute(findstr)
+	For Each Match in Matches
+		FindRS = Match.Value
+	Next
+End Function
+
+Function strClean (strtoclean)
+	Dim objRegExp, outputStr
+	Set objRegExp = New Regexp
+	objRegExp.IgnoreCase = True
+	objRegExp.Global = True
+	objRegExp.Pattern = "[/\:*?""<>|]+"
+	outputStr = objRegExp.Replace(strtoclean, "")
+	strClean = outputStr
+End Function
+
+Set objFSO = CreateObject("Scripting.FileSystemObject")
+Dim arrPOLine()
+Dim arrPODesc()
+Dim arrPOLNum()
+Dim arrPODesc2()
+Dim arrPODesc3()
+Dim arrRSNum()
+Dim arrRSNumConf()
+Dim arrPOQty()
+Dim j
+Dim ValPNFound
+Dim MissPN
+j = 0
+k = 0
+POEnd = 0
+Set objPO = objFSO.OpenTextFile("po.txt", 1)
+Line1 = objPO.ReadLine
+PONum = Right(Line1, Len(Replace(Line1, " ", ""))-14)
+'For i = 1 to 7
+'	objPO.ReadLine
+'	'you can move this part into the loop below, in case the header line isn't exactly 9 rows from the top
+'Next
+Do
+	CurrentLine = objPO.ReadLine
+	If InStr(CurrentLine,"Line") <> 0 Then
+		startqtypos = InStr(CurrentLine,"Quantity") - 4
+		endqtypos = InStr(CurrentLine,"Our ")
+		startpos = InStr(CurrentLine,"Description")
+		endpos = InStr(CurrentLine,"Deliver By")
+		posdiff = endpos - startpos
+		qtydiff = endqtypos - startqtypos
+	End If
+	If IsNumeric(Trim(Left(CurrentLine, 8))) Then '= Cstr(j+1) Or Trim(Left(CurrentLine, 8)) = Cstr(j+2) Then
+		k = 0
+		ReDim Preserve arrPOLine(j)
+		ReDim Preserve arrPODesc(j)
+		ReDim Preserve arrPODesc3(j)
+		ReDim Preserve arrPOLNum(j)
+		ReDim Preserve arrPOQty(j)
+		arrPOLine(j) = CurrentLine
+		arrPODesc(j) = Trim(Mid(arrPOLine(j), startpos, posdiff))
+		arrPODesc3(j) = arrPODesc(j)
+		arrPOLNum(j) = Trim(Left(arrPOLine(j), 8))
+		arrPOQty(j) = CInt(Split(Trim(Mid(arrPOLine(j), startqtypos, qtydiff))," ")(0))
+		j = j + 1
+	ElseIf Trim(CurrentLine) <> "" And j > 0 Then
+		ReDim Preserve arrPODesc3(j - 1)
+		If InStr(Replace(CurrentLine," ",""),"OrderTotal:") = 0 Then
+			ReDim Preserve arrPODesc2(k)
+			arrPODesc2(k) = Trim(CurrentLine)
+			k = k + 1
+			arrPODesc3(j - 1) = arrPODesc(j - 1) & " " & Join(arrPODesc2, " ")
+		ElseIf InStr(Replace(CurrentLine," ",""),"OrderTotal:") <> 0 Then
+			POEnd = 1
+		End If
+	End If
+Loop Until POEnd = 1
+objPO.Close
+objFSO.DeleteFile "po.txt"
+j=j-1
+For m = 0 to j
+	If InStr(arrPODesc3(m), "Pritchitts 46, Belfast Road, Newtownards") <> 0 Then
+	arrPODesc3(m) = Trim(Left(arrPODesc3(m),InStr(arrPODesc3(m), "Pritchitts 46, Belfast Road, Newtownards")-1))
+	End If
+	ReDim Preserve arrRSNum(m)
+	arrRSNum(m) = FindRS(arrPODesc3(m))
+Next
+
+Sub window_onLoad
+	For m = 0 to j
+		ReDim Preserve arrRSNumConf(m)
+		arrRSNumConf(m) = arrRSNum(m)
+		strInput = strInput & "<input type=" & Chr(34) & "text" & Chr(34) & "value=" & Chr(34) & arrPOLNum(m) & Chr(34) & "name=" & Chr(34) & "POLNum" & m & Chr(34) & "style=" & Chr(34) & "font-size:10pt;width:25px;" & Chr(34) & "readOnly=True>&emsp;&ensp;&nbsp;" _
+							& "<input type=" & Chr(34) & "text" & Chr(34) & "value=" & Chr(34) & arrPOQty(m) & Chr(34) & "name=" & Chr(34) & "POQty" & m & Chr(34) & "style=" & Chr(34) & "font-size:10pt;width:25px;" & Chr(34) & "readOnly=True>&emsp;&ensp;&nbsp;" _
+						  	& "<input type=" & Chr(34) & "text" & Chr(34) & "value=" & Chr(34) & Replace(arrPODesc3(m),"""","&quot;") & Chr(34) & "name=" & Chr(34) & "POLDesc" & m & Chr(34) & "style=" & Chr(34) & "font-size:10pt;width:300px" & Chr(34) & "readOnly=True>&emsp;&emsp;&nbsp;" _
+						  	& "<input type=" & Chr(34) & "text" & Chr(34) & "value=" & Chr(34) & arrRSNum(m) & Chr(34) & "id=" & Chr(34) & "RSNum" & m & Chr(34) & "style=" & Chr(34) & "font-size:10pt;width:100px;" & Chr(34) & "oninput=" & Chr(34) & "PartNumValid()" & Chr(34) & ">&emsp;" _
+							& "<span id=" & Chr(34) & "invalid" & m & Chr(34) & ">" & "</span><p>"
+	Next
+    DataArea.InnerHTML = strInput
+	PartNumValid()
+End Sub
+
+Sub PartNumValid()
+ValPNFound = 0
+MissPN = 0
+For m = 0 to j
+	x = document.getElementById("RSNum" & m).value
+	If FindRS(x) = x Or x = "" Then
+		document.getElementById("invalid" & m).innerHTML = ""
+		ValPNFound = ValPNFound + 1
+	Else
+		document.getElementById("invalid" & m).innerHTML = "Invalid Part Number"
+	End If
+	If x = "" Then
+		MissPN = MissPN + 1
+	End If
+Next
+End Sub
+
+Sub CheckGenFile()
+	If ValPNFound <> j + 1 Then
+		MsgBox "Invalid Part Number Found. Please Correct."
+	ElseIf MissPN > 0 Then
+	MissPNMess = MsgBox("There are " & MissPN & " line(s) without an RS number in the PO. Do you want to continue? These lines will not be purchased.",4+32+256+4096,"Lines without Number")
+		If MissPNMess = 6 Then
+			GenFile()
+		End If
+	Else
+		GenFile()
+	End If
+End Sub
+
+Sub GenFile
+	FileName="RS Order.tsv"
+    CurrentFolder = objFSO.GetAbsolutePathName(".\") & "\TSV\"
+	'Set objFolder = objFSO.GetFolder(CurrentFolder)
+	'Set colFiles = objFolder.Files
+	'For Each objFile in colFiles
+	'	If instr(objFile.Name,".tsv") <> 0 Then
+	'		tsvname = objFile.Name
+	'		objFSO.DeleteFile CurrentFolder & tsvname
+	'	End If
+	'Next
+	Set objFile = objFSO.CreateTextFile(CurrentFolder & FileName,True)
+	objFile.Write "Ref" & VBTab & "Qty" & VBTab & "Description" & VBTab & "RS" & vbCrLf
+	For m = 0 to j
+		arrRSNumConf(m) = document.getElementById("RSNum" & m).value
+		objFile.Write "Line" & arrPOLNum(m) & VBTab & arrPOQty(m) & VBTab & arrPODesc3(m) & VBTab & arrRSNumConf(m) & vbCrLf
+	Next
+	objFile.Close
+	Set objShell = CreateObject ("WScript.Shell")
+	objShell.Run "cmd.exe /c clip < " & Chr(34) & CurrentFolder & FileName & Chr(34),0,False
+	OpenWithChrome Chr(34) & CurrentFolder & FileName & Chr(34)
+	objShell.AppActivate "Google Chrome"
+	Set objShell = Nothing
+    Self.Close()
+End Sub
+</script>
+<body style="font-size:16pt;font-family:Calibri;color:#1F497D;background-color:#F1F6F7">
+	<h1><script type="text/VBScript">document.write "RS Components Order " & PONum</script></h1>
+	<p>Line&emsp;&ensp;Qty&emsp;&ensp;Description&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&emsp;&nbsp;RS Part No.</p>
+	<Div id="DataArea"></Div>
+	<input type="button" value="OK" name="OK"  style="font-size:10pt;height:33px;width:200px;" onClick="CheckGenFile()">
+</div>
+</body>

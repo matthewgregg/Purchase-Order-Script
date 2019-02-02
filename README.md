@@ -1,5 +1,5 @@
 # Purchase-Order-Script
-Automates creation on POs
+Automates creation of POs
 
 All third party software used:
 
